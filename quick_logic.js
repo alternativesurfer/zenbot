@@ -56,9 +56,9 @@ module.exports = function container (get, set, clear) {
         get('logger').info('trader', c.default_selector.grey, get_tick_str(tick.id), 'running logic'.grey, rs.asset.grey, rs.currency.grey, {feed: 'trader'})
       }
       rs.rsi_query_limit = 100 // RSI initial value lookback
-      rs.rsi_periods = 14 // RSI smoothing factor
+      rs.rsi_periods = 26 // RSI smoothing factor
       rs.rsi_period = '5m' // RSI tick size
-      rs.rsi_up = 70 // upper RSI threshold
+      rs.rsi_up = 65 // upper RSI threshold
       rs.rsi_down = 28 // lower RSI threshold
       rs.check_period = '1m' // speed to trigger actions at
       rs.selector = 'data.trades.' + c.default_selector
@@ -72,9 +72,9 @@ module.exports = function container (get, set, clear) {
       })
       if (!rs.product) return cb(new Error('no product for ' + c.default_selector))
       rs.min_trade = n(rs.product.min_size).multiply(1).value()
-      rs.sim_start_balance = 100
-      rs.min_double_wait = 600000 * 1 // wait in ms after action before doing same action
-      rs.min_reversal_wait = 600000 * 0.75 // wait in ms after action before doing opposite action
+      rs.sim_start_balance = 10000
+      rs.min_double_wait = 86400000 * 1 // wait in ms after action before doing same action
+      rs.min_reversal_wait = 86400000 * 0.75 // wait in ms after action before doing opposite action
       rs.min_performance = -0.015 // abort trades with lower performance score
       if (first_run) {
         delete rs.real_trade_warning
@@ -411,30 +411,6 @@ module.exports = function container (get, set, clear) {
         }
         size = n(size || 0).multiply(rs.trade_pct).value()
         if (rs.trend === 'DOWN') {
-          // SELL!
-          if (rs.last_sell_time && tick.time - rs.last_sell_time <= rs.min_double_wait) {
-            if (!rs.sell_warning) {
-              get('logger').info('trader', c.default_selector.grey, ('too soon to sell after sell! waiting ' + get_duration(n(rs.min_double_wait).subtract(n(tick.time).subtract(rs.last_sell_time)).multiply(1000).value())).red, {feed: 'trader'})
-            }
-            rs.sell_warning = true
-            return cb()
-          }
-          if (rs.last_buy_time && tick.time - rs.last_buy_time <= rs.min_reversal_wait) {
-            if (!rs.sell_warning) {
-              get('logger').info('trader', c.default_selector.grey, ('too soon to sell after buy! waiting ' + get_duration(n(rs.min_reversal_wait).subtract(n(tick.time).subtract(rs.last_buy_time)).multiply(1000).value())).red, {feed: 'trader'})
-            }
-            rs.sell_warning = true
-            return cb()
-          }
-          new_balance[rs.currency] = n(rs.balance[rs.currency]).add(n(size).multiply(rs.market_price)).value()
-          new_balance[rs.asset] = n(rs.balance[rs.asset]).subtract(size).value()
-          rs.op = 'sell'
-          if (!rs.action_warning) {
-            get('logger').info('trader', c.default_selector.grey, ('attempting to sell ' + n(size).format('0.00000000') + ' ' + rs.asset + ' for ' + format_currency(n(size).multiply(rs.market_price).value(), rs.currency) + ' ' + rs.currency).yellow, {feed: 'trader'})
-          }
-          rs.action_warning = true
-        }
-        else if (rs.trend === 'UP') {
           // BUY!
           if (rs.last_buy_time && tick.time - rs.last_buy_time <= rs.min_double_wait) {
             if (!rs.buy_warning) {
@@ -450,11 +426,35 @@ module.exports = function container (get, set, clear) {
             rs.buy_warning = true
             return cb()
           }
-          new_balance[rs.asset] = n(rs.balance[rs.asset]).add(size).value()
-          new_balance[rs.currency] = n(rs.balance[rs.currency]).subtract(n(size).multiply(rs.market_price)).value()
+          new_balance[rs.currency] = n(rs.balance[rs.currency]).add(n(size).multiply(rs.market_price)).value()
+          new_balance[rs.asset] = n(rs.balance[rs.asset]).subtract(size).value()
           rs.op = 'buy'
           if (!rs.action_warning) {
             get('logger').info('trader', c.default_selector.grey, ('attempting to buy ' + n(size).format('0.00000000') + ' ' + rs.asset + ' for ' + format_currency(n(size).multiply(rs.market_price).value(), rs.currency) + ' ' + rs.currency).yellow, {feed: 'trader'})
+          }
+          rs.action_warning = true
+        }
+        else if (rs.trend === 'UP') {
+          // SELL!
+          if (rs.last_sell_time && tick.time - rs.last_sell_time <= rs.min_double_wait) {
+            if (!rs.sell_warning) {
+              get('logger').info('trader', c.default_selector.grey, ('too soon to sell after sell! waiting ' + get_duration(n(rs.min_double_wait).subtract(n(tick.time).subtract(rs.last_buy_time)).multiply(1000).value())).red, {feed: 'trader'})
+            }
+            rs.sell_warning = true
+            return cb()
+          }
+          if (rs.last_buy_time && tick.time - rs.last_buy_time <= rs.min_reversal_wait) {
+            if (!rs.sell_warning) {
+              get('logger').info('trader', c.default_selector.grey, ('too soon to sell after buy! waiting ' + get_duration(n(rs.min_reversal_wait).subtract(n(tick.time).subtract(rs.last_buy_time)).multiply(1000).value())).red, {feed: 'trader'})
+            }
+            rs.sell_warning = true
+            return cb()
+          }
+          new_balance[rs.asset] = n(rs.balance[rs.asset]).add(size).value()
+          new_balance[rs.currency] = n(rs.balance[rs.currency]).subtract(n(size).multiply(rs.market_price)).value()
+          rs.op = 'sell'
+          if (!rs.action_warning) {
+            get('logger').info('trader', c.default_selector.grey, ('attempting to sell ' + n(size).format('0.00000000') + ' ' + rs.asset + ' for ' + format_currency(n(size).multiply(rs.market_price).value(), rs.currency) + ' ' + rs.currency).yellow, {feed: 'trader'})
           }
           rs.action_warning = true
         }
